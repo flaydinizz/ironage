@@ -1,0 +1,214 @@
+{
+  "animals": [
+    {
+      "name": "Lobo",
+      "stats": {
+        "vida": 80,
+        "velocidade": "alta",
+        "percepcao": "alta",
+        "inteligencia": "alta",
+        "resistenciaFrio": "alta"
+      },
+      "combat": {
+        "hostil": true,
+        "tipoDano": "mordida",
+        "danoBase": 15
+      },
+      "behavior": {
+        "grupo": true,
+        "padrao": "cacador_em_matilha",
+        "periodoAtivo": "noite",
+        "foge": false
+      }
+    },
+    {
+      "name": "Urso",
+      "stats": {
+        "vida": 300,
+        "velocidade": "media",
+        "percepcao": "media",
+        "inteligencia": "media",
+        "resistenciaFrio": "alta"
+      },
+      "combat": {
+        "hostil": true,
+        "tipoDano": "impacto",
+        "danoBase": 40
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "territorial",
+        "periodoAtivo": "todos",
+        "foge": false
+      }
+    },
+    {
+      "name": "Cervo",
+      "stats": {
+        "vida": 60,
+        "velocidade": "muito_alta",
+        "percepcao": "alta",
+        "inteligencia": "baixa",
+        "resistenciaFrio": "media"
+      },
+      "combat": {
+        "hostil": false,
+        "tipoDano": null,
+        "danoBase": 0
+      },
+      "behavior": {
+        "grupo": true,
+        "padrao": "presa",
+        "periodoAtivo": "todos",
+        "foge": true
+      }
+    },
+    {
+      "name": "Coelho",
+      "stats": {
+        "vida": 20,
+        "velocidade": "alta",
+        "percepcao": "media",
+        "inteligencia": "baixa",
+        "resistenciaFrio": "media"
+      },
+      "combat": {
+        "hostil": false,
+        "tipoDano": null,
+        "danoBase": 0
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "erratico",
+        "periodoAtivo": "todos",
+        "foge": true
+      }
+    },
+    {
+      "name": "Raposa",
+      "stats": {
+        "vida": 40,
+        "velocidade": "alta",
+        "percepcao": "alta",
+        "inteligencia": "media",
+        "resistenciaFrio": "media"
+      },
+      "combat": {
+        "hostil": false,
+        "tipoDano": "mordida_leve",
+        "danoBase": 8
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "oportunista",
+        "periodoAtivo": "noite",
+        "foge": true
+      }
+    },
+    {
+      "name": "Bisao",
+      "stats": {
+        "vida": 250,
+        "velocidade": "media",
+        "percepcao": "baixa",
+        "inteligencia": "baixa",
+        "resistenciaFrio": "alta"
+      },
+      "combat": {
+        "hostil": "condicional",
+        "tipoDano": "carga",
+        "danoBase": 35
+      },
+      "behavior": {
+        "grupo": true,
+        "padrao": "defensivo",
+        "periodoAtivo": "todos",
+        "foge": false
+      }
+    },
+    {
+      "name": "Javali",
+      "stats": {
+        "vida": 120,
+        "velocidade": "media",
+        "percepcao": "media",
+        "inteligencia": "media",
+        "resistenciaFrio": "media"
+      },
+      "combat": {
+        "hostil": true,
+        "tipoDano": "mordida",
+        "danoBase": 20
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "agressivo",
+        "periodoAtivo": "todos",
+        "foge": false
+      }
+    },
+    {
+      "name": "Aguia",
+      "stats": {
+        "vida": 30,
+        "velocidade": "muito_alta",
+        "percepcao": "muito_alta",
+        "inteligencia": "media",
+        "resistenciaFrio": "alta"
+      },
+      "combat": {
+        "hostil": false,
+        "tipoDano": null,
+        "danoBase": 0
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "observador",
+        "periodoAtivo": "dia",
+        "foge": true
+      }
+    },
+    {
+      "name": "Lobo Alfa",
+      "stats": {
+        "vida": 150,
+        "velocidade": "alta",
+        "percepcao": "alta",
+        "inteligencia": "alta",
+        "resistenciaFrio": "alta"
+      },
+      "combat": {
+        "hostil": true,
+        "tipoDano": "mordida",
+        "danoBase": 25
+      },
+      "behavior": {
+        "grupo": true,
+        "padrao": "lider_matilha",
+        "periodoAtivo": "noite",
+        "foge": false
+      }
+    },
+    {
+      "name": "Urso Polar",
+      "stats": {
+        "vida": 350,
+        "velocidade": "alta",
+        "percepcao": "alta",
+        "inteligencia": "media",
+        "resistenciaFrio": "muito_alta"
+      },
+      "combat": {
+        "hostil": true,
+        "tipoDano": "impacto",
+        "danoBase": 50
+      },
+      "behavior": {
+        "grupo": false,
+        "padrao": "predador_topo",
+        "periodoAtivo": "todos",
+        "foge": false
+      }
+    }
+  ]
+}
