@@ -1,0 +1,2044 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iron Age</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+/* ══════════════════════════════════════════════════════
+   BASE
+══════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-deep:   #050810;
+  --bg-panel:  #0f1923ee;
+  --border:    #1e3a5f;
+  --gold:      #c4a85c;
+  --blue-lt:   #60a5fa;
+  --text-dim:  #4a6a8a;
+  --text-mid:  #8899aa;
+  --text-lt:   #c8d8e8;
+  --hp-a:      #991b1b; --hp-b: #ef4444;
+  --thirst-a:  #1e40af; --thirst-b: #60a5fa;
+  --xp-a:      #78350f; --xp-b:    #f59e0b;
+  --panel-w:   280px;
+}
+body { background: var(--bg-deep); color: var(--text-lt); font-family: 'Segoe UI', monospace; overflow: hidden; }
+button { cursor: pointer; border: none; outline: none; }
+
+/* ══════════════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════════════ */
+#login-screen {
+  position: fixed; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #0d1b2a, var(--bg-deep) 70%);
+  z-index: 200;
+}
+.login-box {
+  background: #0f1923; border: 1px solid var(--border);
+  border-radius: 14px; padding: 44px 40px; width: 340px;
+  box-shadow: 0 0 60px #0a4a8844;
+}
+.login-box h1 { color: var(--gold); font-size: 1.9rem; text-align: center; letter-spacing: 2px; margin-bottom: 4px; }
+.login-box p  { color: var(--text-dim); font-size: 0.78rem; text-align: center; margin-bottom: 28px; letter-spacing: 1px; }
+.login-box input {
+  width: 100%; padding: 11px 14px; margin-bottom: 12px;
+  background: #0a1520; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-lt); font-size: 0.92rem; outline: none;
+}
+.login-box input:focus { border-color: #4a90d9; }
+.login-box .btn-primary {
+  width: 100%; padding: 12px;
+  background: linear-gradient(135deg, #1a4a8a, #0a6aaa);
+  border-radius: 8px; color: #c8e8ff;
+  font-size: 1rem; font-weight: bold; letter-spacing: 1px; margin-bottom: 10px;
+}
+.login-box .btn-primary:hover { opacity: 0.85; }
+.login-box .err    { color: #f87171; font-size: 0.8rem; text-align: center; min-height: 20px; margin-bottom: 4px; }
+.login-box .toggle { color: #4a90d9; font-size: 0.8rem; text-align: center; cursor: pointer; }
+.login-box .toggle:hover { text-decoration: underline; }
+
+/* ══════════════════════════════════════════════════════
+   GAME
+══════════════════════════════════════════════════════ */
+#game-screen { display: none; position: relative; width: 100vw; height: 100vh; }
+canvas#canvas { display: block; }
+
+/* ══════════════════════════════════════════════════════
+   HUD — VITAIS (Etapa 8)
+══════════════════════════════════════════════════════ */
+#vitals {
+  position: absolute; top: 14px; left: 14px;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.vital-row { width: 190px; }
+.vital-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 3px;
+}
+.vital-label { font-size: 0.66rem; color: var(--text-mid); letter-spacing: 1px; }
+.vital-value { font-size: 0.66rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.bar-bg {
+  background: #0a1520; border-radius: 4px; height: 10px;
+  border: 1px solid var(--border); overflow: hidden; position: relative;
+}
+.bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 0.35s cubic-bezier(.4,0,.2,1);
+  position: relative;
+}
+/* Brilho pulsante quando baixo */
+.bar-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 60%, rgba(255,255,255,0.18) 80%, transparent 100%);
+  animation: barShine 2.2s linear infinite;
+}
+@keyframes barShine { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
+
+#hp-fill     { background: linear-gradient(90deg, var(--hp-a), var(--hp-b)); }
+#thirst-fill { background: linear-gradient(90deg, var(--thirst-a), var(--thirst-b)); }
+
+/* Animação de dano — shake + flash vermelho */
+.bar-fill.damage-flash { animation: damageFlash 0.4s ease-out; }
+@keyframes damageFlash {
+  0%  { filter: brightness(3); }
+  100%{ filter: brightness(1); }
+}
+#terrain-badge {
+  font-size: 0.66rem; color: #fb923c; letter-spacing: 0.8px;
+  margin-top: 2px; display: none;
+}
+
+/* ══════════════════════════════════════════════════════
+   HUD — BOTÕES INFERIORES (Etapa 8)
+══════════════════════════════════════════════════════ */
+#bottom-bar {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 10px; align-items: center; pointer-events: all;
+}
+.hud-btn {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 16px; color: var(--text-mid);
+  font-size: 0.72rem; letter-spacing: 0.8px; transition: all 0.15s;
+  backdrop-filter: blur(6px);
+}
+.hud-btn:hover { border-color: var(--gold); color: var(--gold); }
+.hud-btn.active { border-color: var(--gold); color: var(--gold); background: #1a130600; }
+.hud-btn.danger { border-color: #ef4444aa; color: #f87171; }
+.hud-btn.danger:hover { border-color: #ef4444; background: #1a000000; }
+
+/* ══════════════════════════════════════════════════════
+   PAINEL LATERAL GENÉRICO
+══════════════════════════════════════════════════════ */
+.side-panel {
+  position: absolute; top: 14px; right: 14px;
+  width: var(--panel-w); max-height: calc(100vh - 80px);
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px; overflow-y: auto;
+  backdrop-filter: blur(8px); display: none; flex-direction: column; gap: 10px;
+}
+.side-panel.open { display: flex; }
+.panel-title {
+  font-size: 0.72rem; color: var(--gold); letter-spacing: 1.5px;
+  border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 2px;
+}
+
+/* ══════════════════════════════════════════════════════
+   PAINEL — MOCHILA
+══════════════════════════════════════════════════════ */
+.inv-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid #1e3a5f44; font-size: 0.74rem;
+}
+.inv-item:last-child { border-bottom: none; }
+.inv-item-name { color: var(--text-mid); }
+.inv-item-qty  { color: var(--text-lt); font-weight: bold; }
+.inv-item-kg   { color: var(--text-dim); font-size: 0.66rem; }
+#inv-empty { color: var(--text-dim); font-size: 0.78rem; text-align: center; padding: 12px; }
+#inv-total {
+  font-size: 0.68rem; color: var(--text-dim);
+  border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px;
+}
+.inv-weight-bar-bg {
+  background: #0a1520; border-radius: 3px; height: 6px;
+  border: 1px solid var(--border); overflow: hidden; margin-top: 4px;
+}
+.inv-weight-bar-fill { background: var(--gold); height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+/* ══════════════════════════════════════════════════════
+   PAINEL — SKILLS (Etapa 8)
+══════════════════════════════════════════════════════ */
+.skill-row {
+  display: flex; flex-direction: column; gap: 4px; padding: 6px 0;
+  border-bottom: 1px solid #1e3a5f44;
+}
+.skill-row:last-child { border-bottom: none; }
+.skill-header {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.skill-name  { font-size: 0.74rem; color: var(--text-mid); }
+.skill-level { font-size: 0.74rem; color: var(--gold); font-weight: bold; }
+.skill-xp    { font-size: 0.64rem; color: var(--text-dim); }
+.xpbar-bg {
+  background: #0a1520; border-radius: 3px; height: 5px;
+  border: 1px solid var(--border); overflow: hidden;
+}
+.xpbar-fill {
+  background: linear-gradient(90deg, var(--xp-a), var(--xp-b));
+  height: 100%; border-radius: 3px; transition: width 0.4s ease-out;
+}
+
+/* ══════════════════════════════════════════════════════
+   MINIMAP
+══════════════════════════════════════════════════════ */
+#minimap-wrap {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  background: #0a1520dd; border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px; pointer-events: none;
+}
+canvas#minimap { display: block; border-radius: 4px; }
+#minimap-biome { font-size: 0.6rem; color: var(--text-dim); text-align: center; margin-top: 2px; letter-spacing: 0.4px; }
+
+/* ══════════════════════════════════════════════════════
+   LOG
+══════════════════════════════════════════════════════ */
+#log {
+  position: absolute; bottom: 60px; right: 14px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 12px;
+  width: 255px; max-height: 115px; overflow: hidden;
+  font-size: 0.71rem; line-height: 1.6; backdrop-filter: blur(6px);
+  z-index: 10; /* Abaixo dos painéis (z-index padrão é auto) */
+}
+#log-entries { display: flex; flex-direction: column-reverse; }
+.log-line      { color: #6a8aaa; }
+.log-line.ok   { color: #4ade80; }
+.log-line.warn { color: #fb923c; }
+.log-line.xp   { color: var(--gold); }
+.log-line.dmg  { color: #f87171; }
+.log-line.info { color: var(--blue-lt); }
+
+/* ══════════════════════════════════════════════════════
+   HOTBAR — BARRA DE FERRAMENTAS (Etapa 11)
+══════════════════════════════════════════════════════ */
+#hotbar {
+  position: absolute; bottom: 95px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; pointer-events: all;
+}
+.hotbar-slot {
+  background: var(--bg-panel); border: 2px solid var(--border);
+  border-radius: 10px; width: 64px; height: 64px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; cursor: pointer; transition: all 0.15s;
+  backdrop-filter: blur(6px);
+}
+.hotbar-slot:hover { border-color: var(--gold); transform: translateY(-2px); }
+.hotbar-slot.active { border-color: var(--gold); box-shadow: 0 0 12px var(--gold); }
+.hotbar-slot.empty { opacity: 0.4; cursor: not-allowed; }
+.hotbar-slot.empty:hover { transform: none; border-color: var(--border); }
+.hotbar-icon {
+  font-size: 1.8rem; line-height: 1; margin-bottom: 2px;
+  filter: drop-shadow(0 1px 2px #00000088);
+}
+.hotbar-slot.empty .hotbar-icon { opacity: 0.3; }
+.hotbar-label {
+  font-size: 0.58rem; color: var(--text-dim); letter-spacing: 0.5px;
+  text-align: center; max-width: 58px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hotbar-key {
+  position: absolute; top: 2px; left: 4px;
+  font-size: 0.64rem; color: var(--text-dim);
+  background: #0a0a0a88; border-radius: 3px; padding: 1px 4px;
+  font-weight: bold; font-family: monospace;
+}
+.hotbar-qty {
+  position: absolute; bottom: 2px; right: 4px;
+  font-size: 0.68rem; color: var(--text-lt); font-weight: bold;
+  background: #0a0a0a88; border-radius: 3px; padding: 1px 4px;
+}
+.hotbar-cooldown {
+  position: absolute; inset: 0; background: #00000066;
+  border-radius: 8px; display: none; align-items: center; justify-content: center;
+  font-size: 1.2rem; color: #fff; font-weight: bold;
+}
+.hotbar-slot.cooldown .hotbar-cooldown { display: flex; }
+
+/* ══════════════════════════════════════════════════════
+   TELA DE MORTE (Etapa 11)
+══════════════════════════════════════════════════════ */
+#death-screen {
+  position: fixed; inset: 0; background: #00000099;
+  display: none; align-items: center; justify-content: center;
+  z-index: 150; backdrop-filter: blur(8px);
+}
+.death-box {
+  background: linear-gradient(135deg, #1a0a0a, #0a0000);
+  border: 2px solid #ef4444;
+  border-radius: 16px; padding: 40px 48px; text-align: center;
+  box-shadow: 0 0 80px #ef444488, inset 0 0 40px #00000066;
+  max-width: 480px;
+}
+.death-box h1 {
+  color: #ef4444; font-size: 2.4rem; letter-spacing: 3px;
+  margin-bottom: 12px; text-shadow: 0 0 20px #ef444488;
+}
+.death-box .death-message {
+  color: var(--text-mid); font-size: 1rem; margin-bottom: 24px;
+  line-height: 1.6;
+}
+.death-box .death-timer {
+  font-size: 3rem; color: var(--gold); font-weight: bold;
+  margin: 20px 0; text-shadow: 0 0 15px var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.death-box .death-label {
+  font-size: 0.8rem; color: var(--text-dim); letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.death-box .death-items {
+  margin-top: 20px; padding: 16px; background: #0a0a0a66;
+  border-radius: 8px; border: 1px solid #4a1a1a;
+  max-height: 140px; overflow-y: auto;
+}
+.death-box .death-items-title {
+  font-size: 0.72rem; color: #f87171; letter-spacing: 1px;
+  margin-bottom: 8px; text-transform: uppercase;
+}
+.death-box .death-item {
+  font-size: 0.74rem; color: var(--text-dim); padding: 2px 0;
+}
+
+/* ══════════════════════════════════════════════════════
+   EXTRAÇÃO
+══════════════════════════════════════════════════════ */
+#extract-bar {
+  position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%);
+  background: #0f1923ee; border: 1px solid #c4a85c88;
+  border-radius: 8px; padding: 10px 22px; text-align: center; display: none;
+  backdrop-filter: blur(6px); min-width: 190px;
+}
+#extract-bar p { font-size: 0.74rem; color: var(--gold); margin-bottom: 6px; }
+#xpbar-bg-ext  { background: #0a1520; border-radius: 3px; height: 6px; overflow: hidden; }
+#xpbar-fill-ext { background: var(--gold); height: 100%; width: 0%; transition: width 0.08s linear; }
+
+/* ══════════════════════════════════════════════════════
+   CONTROLES
+══════════════════════════════════════════════════════ */
+#controls-hint {
+  position: absolute; top: 14px; left: 14px; top: auto; bottom: 60px;
+  /* posicionado acima do bottom-bar, mas abaixo do log */
+  display: none; /* só mostra brevemente */
+}
+
+/* ══════════════════════════════════════════════════════
+   XP POPUP FLUTUANTE
+══════════════════════════════════════════════════════ */
+.xp-popup {
+  position: absolute; font-size: 0.78rem; font-weight: bold;
+  color: var(--gold); pointer-events: none;
+  animation: floatUp 1.4s ease-out forwards; white-space: nowrap;
+  text-shadow: 0 0 8px #c4a85c88;
+}
+@keyframes floatUp {
+  0%   { opacity: 1; transform: translateY(0) scale(1);       }
+  100% { opacity: 0; transform: translateY(-55px) scale(0.85); }
+}
+
+/* ══════════════════════════════════════════════════════
+   LEGENDA BIOMAS (rodapé)
+══════════════════════════════════════════════════════ */
+#legend {
+  position: absolute; bottom: 18px; left: 14px;
+  display: flex; flex-wrap: wrap; gap: 8px; max-width: 340px;
+  font-size: 0.6rem; color: var(--text-dim); pointer-events: none;
+}
+.leg-item { display: flex; align-items: center; gap: 3px; }
+.leg-dot  { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; }
+
+/* Scrollbar nos paineis */
+.side-panel::-webkit-scrollbar { width: 4px; }
+.side-panel::-webkit-scrollbar-track { background: transparent; }
+.side-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ══════════════════════════════════════════════════════
+   PAINEL — CRAFTING
+══════════════════════════════════════════════════════ */
+.recipe-card {
+  background: #0a1520; border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.recipe-card:hover { border-color: #2a5a8a; }
+.recipe-card.locked { opacity: 0.45; }
+.recipe-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.recipe-name  { font-size: 0.76rem; color: var(--text-lt); font-weight: bold; }
+.recipe-skill { font-size: 0.62rem; color: var(--text-dim); }
+.recipe-desc  { font-size: 0.68rem; color: var(--text-mid); margin-bottom: 7px; line-height: 1.4; }
+.recipe-inputs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.recipe-ing {
+  font-size: 0.65rem; padding: 2px 7px; border-radius: 4px;
+  background: #1e3a5f44; border: 1px solid #1e3a5f;
+  color: var(--text-mid);
+}
+.recipe-ing.ok   { border-color: #3a6a3a; color: #4ade80; background: #0a2010; }
+.recipe-ing.miss { border-color: #6a1a1a; color: #f87171; background: #200a0a; }
+.recipe-footer {
+  display: flex; justify-content: space-between;
+  align-items: center; gap: 8px;
+}
+.recipe-output { font-size: 0.68rem; color: var(--gold); }
+.btn-craft {
+  background: linear-gradient(135deg, #1a4a2a, #0a7a3a);
+  border: 1px solid #3a8a3a; border-radius: 6px;
+  color: #7aff9a; font-size: 0.68rem; padding: 4px 12px;
+  cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+}
+.btn-craft:hover { opacity: 0.85; }
+.btn-craft:disabled {
+  background: #1a1a2a; border-color: #2a2a4a;
+  color: var(--text-dim); cursor: not-allowed; opacity: 1;
+}
+#craft-feedback {
+  font-size: 0.72rem; padding: 7px 10px; border-radius: 6px;
+  margin-bottom: 8px; display: none;
+  border: 1px solid;
+}
+#craft-feedback.ok   { color: #4ade80; border-color: #3a6a3a; background: #0a2010; }
+#craft-feedback.err  { color: #f87171; border-color: #6a1a1a; background: #200a0a; }
+
+/* Filtro de receitas */
+.craft-filter {
+  display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.craft-filter button {
+  font-size: 0.65rem; padding: 3px 9px; border-radius: 5px;
+  background: #0a1520; border: 1px solid var(--border);
+  color: var(--text-dim); cursor: pointer; transition: all 0.15s;
+}
+.craft-filter button.active {
+  border-color: var(--gold); color: var(--gold);
+}
+
+/* ══════════════════════════════════════════════════════
+   PAINEL — STASH PERMANENTE
+══════════════════════════════════════════════════════ */
+.stash-header-info {
+  display: flex; justify-content: space-between;
+  font-size: 0.68rem; color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.stash-weight-bg {
+  background: #0a1520; border-radius: 3px; height: 6px;
+  border: 1px solid var(--border); overflow: hidden; margin-bottom: 10px;
+}
+.stash-weight-fill {
+  background: linear-gradient(90deg, #1e40af, #60a5fa);
+  height: 100%; border-radius: 3px; transition: width 0.3s;
+}
+.stash-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0; border-bottom: 1px solid #1e3a5f33;
+  font-size: 0.73rem; gap: 6px;
+}
+.stash-item:last-child { border-bottom: none; }
+.stash-item-name  { color: var(--text-mid); flex: 1; }
+.stash-item-qty   { color: var(--text-lt); font-weight: bold; min-width: 32px; text-align: right; }
+.stash-item-kg    { color: var(--text-dim); font-size: 0.62rem; min-width: 44px; text-align: right; }
+.stash-empty {
+  text-align: center; color: var(--text-dim); font-size: 0.78rem;
+  padding: 16px 0;
+}
+.stash-section-title {
+  font-size: 0.64rem; color: var(--text-dim); letter-spacing: 1px;
+  margin: 8px 0 4px; text-transform: uppercase;
+}
+/* Destaque: stash vs mochila */
+.stash-badge {
+  font-size: 0.58rem; padding: 1px 5px; border-radius: 3px;
+  background: #1e3a5f; color: var(--blue-lt); margin-left: 4px;
+  vertical-align: middle;
+}
+.inv-badge {
+  font-size: 0.58rem; padding: 1px 5px; border-radius: 3px;
+  background: #3a1f00; color: var(--gold); margin-left: 4px;
+  vertical-align: middle;
+}
+/* Botão de refresh stash */
+#btn-stash-refresh {
+  font-size: 0.64rem; background: none; border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text-dim); padding: 2px 8px;
+  cursor: pointer; transition: all 0.15s;
+}
+#btn-stash-refresh:hover { border-color: var(--blue-lt); color: var(--blue-lt); }
+.panel-title-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════ LOGIN ═══════ -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>⚔ Iron Age</h1>
+    <p id="login-subtitle">ENTRE NO MUNDO</p>
+    <input id="inp-user" type="text"     placeholder="Username" autocomplete="off">
+    <input id="inp-pass" type="password" placeholder="Senha">
+    <button class="btn-primary" id="btn-login">Entrar</button>
+    <div class="err" id="login-err"></div>
+    <div class="toggle" id="mode-toggle">Não tem conta? Registrar</div>
+  </div>
+</div>
+
+<!-- ═══════ GAME ═══════ -->
+<div id="game-screen">
+  <canvas id="canvas"></canvas>
+
+  <!-- Vitais -->
+  <div id="vitals">
+    <div class="vital-row">
+      <div class="vital-header">
+        <span class="vital-label">❤ HP</span>
+        <span class="vital-value" id="hp-val">100</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="hp-fill" style="width:100%"></div></div>
+    </div>
+    <div class="vital-row">
+      <div class="vital-header">
+        <span class="vital-label">💧 SEDE</span>
+        <span class="vital-value" id="thirst-val">100</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="thirst-fill" style="width:100%"></div></div>
+    </div>
+    <div id="terrain-badge"></div>
+  </div>
+
+  <!-- Minimap central-top -->
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="130" height="130"></canvas>
+    <div id="minimap-biome">—</div>
+  </div>
+
+  <!-- Painel Mochila -->
+  <div class="side-panel" id="panel-inv">
+    <div class="panel-title">🎒 MOCHILA</div>
+    <div id="inv-list"><div id="inv-empty">Vazio</div></div>
+    <div id="inv-total">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span>Peso</span><span id="inv-kg-text">0 / 30 kg</span>
+      </div>
+      <div class="inv-weight-bar-bg"><div class="inv-weight-bar-fill" id="inv-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Painel Skills -->
+  <div class="side-panel" id="panel-skills">
+    <div class="panel-title">⚔ HABILIDADES</div>
+    <div id="skills-list">
+      <!-- gerado dinamicamente -->
+    </div>
+  </div>
+
+  <!-- Painel Crafting -->
+  <div class="side-panel" id="panel-crafting">
+    <div class="panel-title">🔨 CRAFTING</div>
+    <div id="craft-feedback"></div>
+    <div class="craft-filter" id="craft-filter">
+      <button class="active" data-cat="all">Todos</button>
+      <button data-cat="craftable">Intermediários</button>
+      <button data-cat="consumable">Consumíveis</button>
+      <button data-cat="weapon">Armas</button>
+      <button data-cat="armor">Armaduras</button>
+    </div>
+    <div id="crafting-list"><!-- gerado dinamicamente --></div>
+  </div>
+
+  <!-- Painel Stash Permanente -->
+  <div class="side-panel" id="panel-stash">
+    <div class="panel-title-row">
+      <span class="panel-title" style="border:none;margin:0;padding:0">📦 STASH <span class="stash-badge">Permanente</span></span>
+      <button id="btn-stash-refresh" title="Atualizar">↺</button>
+    </div>
+    <div class="stash-header-info">
+      <span id="stash-kg-text">— / — kg</span>
+      <span id="stash-currency">💰 —</span>
+    </div>
+    <div class="stash-weight-bg"><div class="stash-weight-fill" id="stash-bar" style="width:0%"></div></div>
+    <div id="stash-list"><div class="stash-empty">Carregando…</div></div>
+  </div>
+
+  <!-- Log -->
+  <div id="log"><div id="log-entries"></div></div>
+
+  <!-- Extração -->
+  <div id="extract-bar">
+    <p>⬆ Extraindo… (E para cancelar)</p>
+    <div id="xpbar-bg-ext"><div id="xpbar-fill-ext"></div></div>
+  </div>
+
+  <!-- Hotbar (Etapa 11) -->
+  <div id="hotbar">
+    <div class="hotbar-slot empty" data-slot="0" data-type="weapon">
+      <span class="hotbar-key">1</span>
+      <div class="hotbar-icon">⚔️</div>
+      <div class="hotbar-label">Arma</div>
+      <div class="hotbar-cooldown">3</div>
+    </div>
+    <div class="hotbar-slot empty" data-slot="1" data-type="tool">
+      <span class="hotbar-key">2</span>
+      <div class="hotbar-icon">⛏</div>
+      <div class="hotbar-label">Ferramenta</div>
+      <div class="hotbar-cooldown">2</div>
+    </div>
+    <div class="hotbar-slot empty" data-slot="2" data-type="food">
+      <span class="hotbar-key">3</span>
+      <div class="hotbar-icon">🌾</div>
+      <div class="hotbar-label">Alimento</div>
+      <div class="hotbar-cooldown">1</div>
+    </div>
+    <div class="hotbar-slot empty" data-slot="3" data-type="consumable">
+      <span class="hotbar-key">4</span>
+      <div class="hotbar-icon">🧬</div>
+      <div class="hotbar-label">Utilitário</div>
+      <div class="hotbar-cooldown">5</div>
+    </div>
+  </div>
+
+  <!-- Botões inferiores -->
+  <div id="bottom-bar">
+    <button class="hud-btn" id="btn-inv"      title="Mochila (I)">🎒 Mochila <span class="inv-badge">Sessão</span></button>
+    <button class="hud-btn" id="btn-stash"    title="Stash (B)">📦 Stash <span class="stash-badge">Permanente</span></button>
+    <button class="hud-btn" id="btn-crafting" title="Crafting (C)">🔨 Crafting</button>
+    <button class="hud-btn" id="btn-skills"   title="Habilidades (K)">⚔ Skills</button>
+    <button class="hud-btn danger" id="btn-exit" title="Sair (Esc)">✕ Sair</button>
+  </div>
+
+  <!-- Legenda biomas -->
+  <div id="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#030e1a"></div>Oceano</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#c2a46a"></div>Praia</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#a8d0a0"></div>Campina</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#3a7a4a"></div>Fl. Temp.</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#2d6e4e"></div>Fl. Trop.</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#c4b080"></div>Deserto</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#5a7a5a"></div>Taiga</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#7a9a9a"></div>Tundra</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#888"></div>Mont.</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#e8e8ff"></div>Neve</div>
+  </div>
+
+  <div id="death-screen">
+    <div class="death-box">
+      <h1>☠ VOCÊ MORREU ☠</h1>
+      <div class="death-message" id="death-msg">Todo o inventário de sessão foi perdido.</div>
+      <div class="death-timer" id="death-timer">10</div>
+      <div class="death-label">Respawn em...</div>
+      <div class="death-items" id="death-items-list" style="display:none">
+        <div class="death-items-title">Itens Perdidos:</div>
+        <div id="death-items-content"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// CONSTANTES
+// ══════════════════════════════════════════════════════════════
+const SERVER        = 'http://localhost:3001';
+const MAP_W         = 12000;
+const MAP_H         = 12000;
+const PLAYER_SPEED  = 140;   // igual ao servidor
+const COLLECT_RANGE = 80;
+const ATTACK_RANGE  = 130;
+const ZOOM          = 2.0;   // pixels por unidade
+
+// Bayer 4×4 para dithering ordenado nas bordas de bioma
+const BAYER4 = [
+   0, 8, 2,10,
+  12, 4,14, 6,
+   3,11, 1, 9,
+  15, 7,13, 5,
+];
+const BAYER4_SIZE = 4;
+const BAYER4_MAX  = 16;
+
+// BIOME enum (espelha servidor)
+const BIOME = {
+  DEEP_OCEAN:0,OCEAN:1,SHALLOW_SEA:2,BEACH:3,
+  TUNDRA:4,TAIGA:5,GRASSLAND:6,TEMP_FOREST:7,
+  TROP_FOREST:8,DESERT:9,SAVANNA:10,MOUNTAIN:11,SNOW_PEAK:12,
+};
+
+// Cores RGB por bioma (usadas no dithering — arrays para blending)
+const BIOME_RGB = [
+  [3,14,26],    // 0 DEEP_OCEAN
+  [7,26,50],    // 1 OCEAN
+  [13,42,80],   // 2 SHALLOW_SEA
+  [194,164,106],// 3 BEACH
+  [122,154,154],// 4 TUNDRA
+  [90,122,90],  // 5 TAIGA
+  [168,208,160],// 6 GRASSLAND
+  [58,122,74],  // 7 TEMP_FOREST
+  [45,110,78],  // 8 TROP_FOREST
+  [196,176,128],// 9 DESERT
+  [200,160,88], // 10 SAVANNA
+  [136,136,136],// 11 MOUNTAIN
+  [232,232,255],// 12 SNOW_PEAK
+];
+
+const BIOME_LABEL = [
+  'Oceano Profundo','Oceano','Mar Raso','Praia',
+  'Tundra','Taiga','Campina','Floresta Temperada',
+  'Floresta Tropical','Deserto','Savana','Montanha','Pico Nevado',
+];
+
+// Entidades
+const EV = {
+  lobo:          {bg:'#4a1515',bd:'#ef4444',l:'L'},
+  lobo_alfa:     {bg:'#6b0000',bd:'#ff2222',l:'LA'},
+  urso:          {bg:'#5c2c00',bd:'#f97316',l:'U'},
+  urso_polar:    {bg:'#2a4a5a',bd:'#93c5fd',l:'UP'},
+  cervo:         {bg:'#3a2800',bd:'#fbbf24',l:'Ce'},
+  alce:          {bg:'#3a2a00',bd:'#d97706',l:'Al'},
+  bisao:         {bg:'#4a2800',bd:'#f59e0b',l:'Bi'},
+  boi_selvagem:  {bg:'#4a3000',bd:'#d97706',l:'Bs'},
+  javali:        {bg:'#3a1a00',bd:'#f97316',l:'J'},
+  coelho:        {bg:'#2a1a1a',bd:'#fde68a',l:'Co'},
+  raposa:        {bg:'#4a2000',bd:'#fb923c',l:'R'},
+  lince:         {bg:'#3a0a2a',bd:'#c084fc',l:'Li'},
+  cobra_gelo:    {bg:'#003a1e',bd:'#34d399',l:'Cb'},
+  cao_selvagem:  {bg:'#3a0808',bd:'#ef4444',l:'Cs'},
+  rato_gelo:     {bg:'#2a2a3a',bd:'#a5f3fc',l:'Rg'},
+  aguia:         {bg:'#1a1a00',bd:'#fde68a',l:'Ag'},
+  coruja:        {bg:'#2a1a00',bd:'#fbbf24',l:'Cj'},
+  corvo:         {bg:'#1a1a1a',bd:'#9ca3af',l:'Cv'},
+  cavalo:        {bg:'#3a1e0a',bd:'#d4a573',l:'Ca'},
+  cabra_montanha:{bg:'#2a2a1a',bd:'#e5e7eb',l:'Cm'},
+};
+const RV = {
+  iron_ore:    {bg:'#374151',bd:'#9ca3af',l:'⛏'},
+  wood:        {bg:'#451a03',bd:'#a16207',l:'🌲'},
+  stone:       {bg:'#374151',bd:'#d1d5db',l:'🪨'},
+  fiber:       {bg:'#052e16',bd:'#4ade80',l:'🌿'},
+  coal:        {bg:'#111827',bd:'#6b7280',l:'●'},
+  food_ration: {bg:'#422006',bd:'#fbbf24',l:'🌾'},
+};
+
+const SKILL_NAMES = {
+  mining:'Mineração',carpentry:'Carpintaria',crafting:'Artesanato',
+  farming:'Colheita',hunting:'Caça',combat:'Combate',stealth:'Furtividade',
+};
+const SKILL_ICONS = {
+  mining:'⛏',carpentry:'🪵',crafting:'🔨',farming:'🌾',
+  hunting:'🏹',combat:'⚔',stealth:'👁',
+};
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let token=null,socket=null,mySocketId=null;
+let localPos={x:MAP_W/2,y:MAP_H/2};
+let seqCounter=0,pendingInputs=[];
+let myHp=100,myThirst=100;
+let myInventory=[],myWeightUsed=0,myWeightLimit=30;
+let worldPlayers=[],worldResources=[],worldFauna=[],extractionZones=[];
+let currentSpeedMult=1.0;
+let isExtracting=false,extractStart=0,extractDuration=5000;
+let isRegisterMode=false;
+let activePanel=null; // 'inv' | 'skills' | 'crafting' | 'stash' | null
+
+// Dados do Stash permanente (carregado via REST)
+let stashData = { items: [], totalWeight: 0, weightLimit: 500, currency: 0 };
+// Receitas carregadas do servidor
+let recipesData = [];
+let craftFilterCat = 'all';
+
+// Facing (cone de visão)
+let facingAngle = -Math.PI/2; // começa olhando para cima
+
+// Map data
+let heightmapData=null,biomemapData=null;
+let gridW=600,gridH=600,cellSize=20;
+let chunkCells=6,chunksW=100,chunksH=100;
+let terrainCanvas=null,miniTerrainCanvas=null;
+let fogCanvas=null,fogCtx=null;
+let discoveredChunks=null;
+let visionCanvas=null; // cone de visão overlay
+
+// Skills state (atualizado pelo servidor via eventos)
+let skillsData = {};
+
+// Estado da Hotbar (Etapa 11)
+let hotbar = [
+  { slot: 0, type: 'weapon',     itemType: null, quantity: 0 },  // 1
+  { slot: 1, type: 'tool',       itemType: null, quantity: 0 },  // 2
+  { slot: 2, type: 'food',       itemType: null, quantity: 0 },  // 3
+  { slot: 3, type: 'consumable', itemType: null, quantity: 0 },  // 4
+];
+let hotbarCooldowns = [0, 0, 0, 0]; // timestamp de quando cada slot ficará disponível
+const HOTBAR_COOLDOWN_MS = 2000; // 2s de cooldown ao usar um consumível
+
+
+// ══════════════════════════════════════════════════════════════
+// BASE64 → TypedArray
+// ══════════════════════════════════════════════════════════════
+function b64ToU8(b64){const bin=atob(b64),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
+function decodeHM(b64){const u=b64ToU8(b64),i8=new Int8Array(u.length);for(let i=0;i<u.length;i++)i8[i]=u[i]-3;return i8;}
+function decodeBM(b64){return b64ToU8(b64);}
+
+// ══════════════════════════════════════════════════════════════
+// TERRAIN CACHE + DITHERING
+// ══════════════════════════════════════════════════════════════
+function buildTerrainCache(){
+  if(!heightmapData||!biomemapData)return;
+  const tw=gridW*cellSize, th=gridH*cellSize;
+  terrainCanvas=document.createElement('canvas');
+  terrainCanvas.width=tw; terrainCanvas.height=th;
+  const tc=terrainCanvas.getContext('2d');
+  const id=tc.createImageData(tw,th);
+  const d=id.data;
+
+  for(let gy=0;gy<gridH;gy++){
+    for(let gx=0;gx<gridW;gx++){
+      const biome=biomemapData[gy*gridW+gx];
+      const rgb  =BIOME_RGB[biome]??[80,80,80];
+
+      for(let py=0;py<cellSize;py++){
+        for(let px=0;px<cellSize;px++){
+          // Posição pixel global
+          const wx=gx*cellSize+px, wy=gy*cellSize+py;
+          const idx=(wy*tw+wx)*4;
+
+          // Dithering Bayer 4×4 nas bordas de bioma
+          // Para cada pixel, verifica se bioma de vizinhos difere
+          let r=rgb[0],g=rgb[1],b=rgb[2];
+
+          // Raio de dithering = 1 célula = cellSize pixels
+          // Peso = distância ao centro da célula / (cellSize/2)
+          const cxLocal=cellSize/2, cyLocal=cellSize/2;
+          const dist=Math.hypot(px-cxLocal,py-cyLocal);
+          const edgeRadius=cellSize*0.7;
+
+          if(dist>edgeRadius*0.3){
+            // Verifica vizinho mais próximo na direção do pixel
+            const dx=px-cxLocal, dy=py-cyLocal;
+            const ndx=dx===0&&dy===0?0:Math.sign(dx);
+            const ndy=dx===0&&dy===0?0:Math.sign(dy);
+            const ngx=Math.max(0,Math.min(gridW-1,gx+ndx));
+            const ngy=Math.max(0,Math.min(gridH-1,gy+ndy));
+            const nBiome=biomemapData[ngy*gridW+ngx];
+
+            if(nBiome!==biome){
+              const nRgb=BIOME_RGB[nBiome]??[80,80,80];
+              // t = quanto "perto" do vizinho estamos [0..1]
+              const t=Math.max(0,(dist-edgeRadius*0.3)/(edgeRadius*0.7));
+              // Bayer threshold
+              const bx=(wx%BAYER4_SIZE), by=(wy%BAYER4_SIZE);
+              const threshold=BAYER4[by*BAYER4_SIZE+bx]/BAYER4_MAX;
+              if(t>threshold){
+                r=nRgb[0]; g=nRgb[1]; b=nRgb[2];
+              }
+            }
+          }
+
+          d[idx]  =r; d[idx+1]=g; d[idx+2]=b; d[idx+3]=255;
+        }
+      }
+    }
+  }
+  tc.putImageData(id,0,0);
+
+  buildMinimapTerrain();
+  buildFogCanvas(tw,th);
+  buildVisionCanvas(tw,th);
+}
+
+function buildMinimapTerrain(){
+  const mc=document.getElementById('minimap');
+  const MW=mc.width, MH=mc.height;
+  miniTerrainCanvas=document.createElement('canvas');
+  miniTerrainCanvas.width=MW; miniTerrainCanvas.height=MH;
+  const mctx=miniTerrainCanvas.getContext('2d');
+  const sx=MW/gridW, sy=MH/gridH;
+  for(let gy=0;gy<gridH;gy++){
+    for(let gx=0;gx<gridW;gx++){
+      const biome=biomemapData[gy*gridW+gx];
+      const rgb=BIOME_RGB[biome]??[80,80,80];
+      mctx.fillStyle=`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+      mctx.fillRect(gx*sx,gy*sy,sx+0.5,sy+0.5);
+    }
+  }
+}
+
+function buildFogCanvas(tw,th){
+  fogCanvas=document.createElement('canvas');
+  fogCanvas.width=tw; fogCanvas.height=th;
+  fogCtx=fogCanvas.getContext('2d');
+  fogCtx.fillStyle='#000';
+  fogCtx.fillRect(0,0,tw,th);
+  discoveredChunks=new Uint8Array(chunksW*chunksH);
+}
+
+// Canvas sobreposto para cone de visão (escurece fora do cone)
+function buildVisionCanvas(tw,th){
+  // O visionCanvas é do tamanho da TELA, não do terreno.
+  // É recriado a cada frame com as dimensões atuais da janela.
+  visionCanvas=document.createElement('canvas');
+  // Dimensionamento inicial — será redimensionado no render
+  visionCanvas.width=canvas.width||window.innerWidth;
+  visionCanvas.height=canvas.height||window.innerHeight;
+}
+
+function revealChunksAround(wx,wy,radius=2){
+  if(!discoveredChunks||!fogCtx)return;
+  const csz=chunkCells*cellSize;
+  const cx=Math.floor(wx/csz), cy=Math.floor(wy/csz);
+  for(let dy=-radius;dy<=radius;dy++){
+    for(let dx=-radius;dx<=radius;dx++){
+      const nx=cx+dx, ny=cy+dy;
+      if(nx<0||nx>=chunksW||ny<0||ny>=chunksH)continue;
+      const i=ny*chunksW+nx;
+      if(discoveredChunks[i])continue;
+      discoveredChunks[i]=1;
+      fogCtx.clearRect(nx*csz,ny*csz,csz,csz);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CONE DE VISÃO
+// O player está SEMPRE no centro da tela (W/2, H/2).
+// Os raios são em pixels de tela (unidades de mundo × ZOOM).
+// ══════════════════════════════════════════════════════════════
+const VISION_RADIUS_WORLD = 380; // raio frontal em unidades de mundo
+const VISION_CONE_DEG     = 140; // abertura do cone em graus
+const VISION_BACK_WORLD   = 120; // raio traseiro em unidades de mundo
+
+function updateFacingFromInput(dx, dy){
+  if(dx===0&&dy===0)return;
+  facingAngle = Math.atan2(dy, dx);
+}
+
+function renderVisionOverlay(W, H){
+  if(!visionCanvas)return;
+  // Redimensiona para a tela atual
+  if(visionCanvas.width!==W||visionCanvas.height!==H){
+    visionCanvas.width=W; visionCanvas.height=H;
+  }
+  const vc=visionCanvas.getContext('2d');
+  vc.clearRect(0,0,W,H);
+
+  // Overlay escuro sobre toda a tela
+  vc.fillStyle='rgba(0,0,0,0.55)';
+  vc.fillRect(0,0,W,H);
+
+  // Player SEMPRE em (W/2, H/2) na tela
+  const sx=W/2, sy=H/2;
+  // Converte raios de mundo para pixels de tela
+  const rFront=VISION_RADIUS_WORLD*ZOOM;
+  const rBack =VISION_BACK_WORLD*ZOOM;
+  const half  =(VISION_CONE_DEG/2)*(Math.PI/180);
+
+  vc.save();
+  vc.globalCompositeOperation='destination-out';
+
+  // Cone frontal com gradiente suave
+  const g=vc.createRadialGradient(sx,sy,0,sx,sy,rFront);
+  g.addColorStop(0,  'rgba(0,0,0,1)');
+  g.addColorStop(0.7,'rgba(0,0,0,0.9)');
+  g.addColorStop(1,  'rgba(0,0,0,0)');
+  vc.beginPath();
+  vc.moveTo(sx,sy);
+  vc.arc(sx,sy,rFront,facingAngle-half,facingAngle+half);
+  vc.closePath();
+  vc.fillStyle=g;
+  vc.fill();
+
+  // Círculo pequeno atrás — visibilidade mínima
+  const gb=vc.createRadialGradient(sx,sy,0,sx,sy,rBack);
+  gb.addColorStop(0,'rgba(0,0,0,0.9)');
+  gb.addColorStop(1,'rgba(0,0,0,0)');
+  vc.beginPath();
+  vc.arc(sx,sy,rBack,0,Math.PI*2);
+  vc.fillStyle=gb;
+  vc.fill();
+
+  vc.restore();
+}
+
+// ══════════════════════════════════════════════════════════════
+// TERRAIN QUERY
+// ══════════════════════════════════════════════════════════════
+function getBiome(wx,wy){
+  if(!biomemapData)return BIOME.GRASSLAND;
+  const gx=Math.max(0,Math.min(gridW-1,Math.floor(wx/cellSize)));
+  const gy=Math.max(0,Math.min(gridH-1,Math.floor(wy/cellSize)));
+  return biomemapData[gy*gridW+gx];
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════════════════════════
+document.getElementById('mode-toggle').onclick=()=>{
+  isRegisterMode=!isRegisterMode;
+  document.getElementById('login-subtitle').textContent=isRegisterMode?'CRIE SUA CONTA':'ENTRE NO MUNDO';
+  document.getElementById('btn-login').textContent=isRegisterMode?'Registrar':'Entrar';
+  document.getElementById('mode-toggle').textContent=isRegisterMode?'Já tem conta? Entrar':'Não tem conta? Registrar';
+  document.getElementById('login-err').textContent='';
+};
+document.getElementById('btn-login').onclick=doLogin;
+document.getElementById('inp-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+
+async function doLogin(){
+  const username=document.getElementById('inp-user').value.trim();
+  const password=document.getElementById('inp-pass').value;
+  const errEl=document.getElementById('login-err');
+  errEl.textContent='';
+  if(!username||!password){errEl.textContent='Preencha todos os campos.';return;}
+  try{
+    const res=await fetch(SERVER+(isRegisterMode?'/auth/register':'/auth/login'),{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username,password}),
+    });
+    const data=await res.json();
+    if(!res.ok){errEl.textContent=data.error??'Erro no servidor.';return;}
+    token=data.token;
+    startGame();
+  }catch{errEl.textContent='Não foi possível conectar ao servidor.';}
+}
+
+// ══════════════════════════════════════════════════════════════
+// BOTÕES HUD
+// ══════════════════════════════════════════════════════════════
+function togglePanel(name){
+  const panels = {
+    inv:      document.getElementById('panel-inv'),
+    skills:   document.getElementById('panel-skills'),
+    crafting: document.getElementById('panel-crafting'),
+    stash:    document.getElementById('panel-stash'),
+  };
+  const btns = {
+    inv:      document.getElementById('btn-inv'),
+    skills:   document.getElementById('btn-skills'),
+    crafting: document.getElementById('btn-crafting'),
+    stash:    document.getElementById('btn-stash'),
+  };
+
+  if(activePanel===name){
+    // Fecha o painel atual
+    activePanel=null;
+    Object.values(panels).forEach(p=>p.classList.remove('open'));
+    Object.values(btns).forEach(b=>b?.classList.remove('active'));
+  } else {
+    // Fecha todos e abre o selecionado
+    activePanel=name;
+    Object.entries(panels).forEach(([k,p])=>p.classList.toggle('open', k===name));
+    Object.entries(btns).forEach(([k,b])=>b?.classList.toggle('active', k===name));
+    // Carrega conteúdo sob demanda
+    if(name==='skills')   renderSkillsPanel();
+    if(name==='crafting') openCrafting();
+    if(name==='stash')    openStash();
+  }
+}
+
+document.getElementById('btn-inv').onclick      = ()=>togglePanel('inv');
+document.getElementById('btn-skills').onclick   = ()=>togglePanel('skills');
+document.getElementById('btn-crafting').onclick = ()=>togglePanel('crafting');
+document.getElementById('btn-stash').onclick    = ()=>togglePanel('stash');
+document.getElementById('btn-stash-refresh').onclick = ()=>openStash(true);
+document.getElementById('btn-exit').onclick = ()=>{
+  if(socket){socket.disconnect();}
+  document.getElementById('game-screen').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  token=null; socket=null; mySocketId=null;
+  heightmapData=null; biomemapData=null;
+  terrainCanvas=null; fogCanvas=null; visionCanvas=null;
+  worldPlayers=[]; worldResources=[]; worldFauna=[]; extractionZones=[];
+  skillsData={}; stashData={items:[],totalWeight:0,weightLimit:500,currency:0};
+  recipesData=[]; activePanel=null;
+  Object.values({inv:'panel-inv',skills:'panel-skills',crafting:'panel-crafting',stash:'panel-stash'})
+    .forEach(id=>document.getElementById(id)?.classList.remove('open'));
+};
+
+// Filtros de categoria no crafting
+document.getElementById('craft-filter').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-cat]');
+  if(!btn) return;
+  craftFilterCat = btn.dataset.cat;
+  document.querySelectorAll('#craft-filter button').forEach(b=>b.classList.toggle('active', b===btn));
+  renderCraftingPanel();
+});
+
+// ══════════════════════════════════════════════════════════════
+// SOCKET
+// ══════════════════════════════════════════════════════════════
+function startGame(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('game-screen').style.display='block';
+  resizeCanvas();
+
+  socket=io(SERVER,{auth:{token:`Bearer ${token}`}});
+
+  socket.on('connect',()=>{mySocketId=socket.id;addLog('Conectado.','info');});
+  socket.on('connect_error',e=>addLog('Erro: '+e.message,'warn'));
+
+  socket.on('game:joined',data=>{
+    localPos       ={...data.spawnPosition};
+    extractionZones=data.extractionZones??[];
+    worldResources =data.resources??[];
+    gridW   =data.gridW??600;    gridH    =data.gridH??600;
+    cellSize=data.cellSize??20;  chunkCells=data.chunkCells??6;
+    chunksW =data.chunksW??100;  chunksH   =data.chunksH??100;
+    if(data.heightmap)heightmapData=decodeHM(data.heightmap);
+    if(data.biomeMap) biomemapData =decodeBM(data.biomeMap);
+    buildTerrainCache();
+    revealChunksAround(localPos.x,localPos.y,3);
+    addLog(`Sala ${data.roomId.slice(-6)} — spawn (${Math.round(localPos.x)}, ${Math.round(localPos.y)})`,'info');
+    requestAnimationFrame(gameLoop);
+  });
+
+  socket.on('world:state',snap=>{
+    worldPlayers  =snap.players??[];
+    worldResources=snap.resources??[];
+    worldFauna    =snap.fauna??[];
+    const me=worldPlayers.find(p=>p.socketId===mySocketId);
+    if(me){
+      const prevHp=myHp, prevTh=myThirst;
+      myHp=me.hp; myThirst=me.thirst;
+      updateVitals(prevHp,prevTh);
+    }
+  });
+
+  // XP / skills vindos do servidor
+  socket.on('skill:update',data=>{
+    if(data?.skills)skillsData=data.skills;
+  });
+
+  socket.on('player:move_ack',d=>{
+    pendingInputs=pendingInputs.filter(i=>i.seq>d.seq);
+    if(d.speedMult!==undefined)currentSpeedMult=d.speedMult;
+    if(pendingInputs.length===0)localPos={...d.position};
+  });
+
+  socket.on('collect:ok',d=>{
+    myInventory=d.inventory;myWeightUsed=d.weightUsed;myWeightLimit=d.weightLimit;
+    updateInventory();
+    addLog(`+${d.collected}× ${d.itemType}`,'ok');
+    showXp(d.xpResults);
+    if(d.skills)skillsData=d.skills;
+  });
+  socket.on('collect:fail',d=>addLog(d.reason,'warn'));
+  socket.on('attack:hit',  d=>addLog(`Acertou! −${d.damage} HP`,'ok'));
+  socket.on('attack:miss', d=>addLog(d.reason??'Errou!','warn'));
+  socket.on('fauna:killed',d=>{
+    myInventory=d.inventory;myWeightUsed=d.weightUsed;myWeightLimit=d.weightLimit;
+    updateInventory();addLog(`${d.faunaLabel} abatido!`,'ok');showXp(d.xpResults);
+    if(d.skills)skillsData=d.skills;
+  });
+  socket.on('player:hit',d=>{
+    myHp=d.hpAfter;updateVitals(myHp+d.damage,myThirst);
+    addLog(`Tomou ${d.damage} dano!`,'dmg');
+  });
+  socket.on('extract:started',d=>{
+    isExtracting=true;extractStart=Date.now();extractDuration=d.durationMs;
+    document.getElementById('extract-bar').style.display='block';
+    addLog(`Extraindo em ${d.zoneLabel}…`,'info');
+  });
+  socket.on('extract:ok',d=>{
+    isExtracting=false;myInventory=[];myWeightUsed=0;
+    updateInventory();
+    document.getElementById('extract-bar').style.display='none';
+    addLog(d.message,'ok');showXp(d.xpResults);
+    if(d.skills)skillsData=d.skills;
+    // Sincroniza stash local com o que foi extraído
+    if(d.extracted)syncStashFromExtract(d.extracted);
+    else openStash(true); // fallback: recarrega tudo
+  });
+  socket.on('extract:cancelled',()=>{
+    isExtracting=false;
+    document.getElementById('extract-bar').style.display='none';
+    addLog('Extração cancelada.','warn');
+  });
+  socket.on('extract:fail',d=>{
+    isExtracting=false;
+    document.getElementById('extract-bar').style.display='none';
+    addLog(d.reason,'warn');
+  });
+  socket.on('player:died', data => {
+  myInventory = [];
+  myWeightUsed = 0;
+  updateInventory();
+
+  // Mostra tela de morte
+  const deathScreen = document.getElementById('death-screen');
+  const deathMsg = document.getElementById('death-msg');
+  const deathTimer = document.getElementById('death-timer');
+  const deathItemsList = document.getElementById('death-items-list');
+  const deathItemsContent = document.getElementById('death-items-content');
+
+  deathMsg.textContent = data.message || 'Você morreu';
+  deathScreen.style.display = 'flex';
+
+  // Lista itens perdidos
+  if (data.lostItems && data.lostItems.length > 0) {
+    deathItemsList.style.display = 'block';
+    deathItemsContent.innerHTML = data.lostItems.map(item =>
+      `<div class="death-item">• ${item.quantity}× ${ITEM_META[item.itemType]?.label || item.itemType}</div>`
+    ).join('');
+  } else {
+    deathItemsList.style.display = 'none';
+  }
+
+  // Timer de respawn
+  let remaining = Math.ceil(data.respawnDelayMs / 1000);
+  deathTimer.textContent = remaining;
+  const timerInterval = setInterval(() => {
+    remaining--;
+    deathTimer.textContent = remaining;
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+    }
+  }, 1000);
+
+  addLog(data.message, 'dmg');
+});
+
+socket.on('player:respawned', data => {
+  document.getElementById('death-screen').style.display = 'none';
+  localPos = data.position;
+  myHp = data.hp;
+  myThirst = data.thirst;
+  updateVitals(myHp, myThirst);
+  addLog('Você renasceu', 'info');
+});
+}
+
+// ══════════════════════════════════════════════════════════════
+// INPUT
+// ══════════════════════════════════════════════════════════════
+let moveX=0,moveY=0;
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  if(k==='w'||k==='arrowup')   {keys.w=true;}
+  if(k==='a'||k==='arrowleft') {keys.a=true;}
+  if(k==='s'||k==='arrowdown') {keys.s=true;}
+  if(k==='d'||k==='arrowright'){keys.d=true;}
+  if(k==='e')socket?.emit(isExtracting?'player:extract_cancel':'player:extract_start');
+  if(k==='f')attackNearestFauna();
+  if(k==='i')togglePanel('inv');
+  if(k==='k')togglePanel('skills');
+  if(k==='c')togglePanel('crafting');
+  if(k==='b')togglePanel('stash');
+  if(k==='escape')document.getElementById('btn-exit').click();
+});
+window.addEventListener('keyup',e=>{
+  const k=e.key.toLowerCase();
+  if(k==='w'||k==='arrowup')   keys.w=false;
+  if(k==='a'||k==='arrowleft') keys.a=false;
+  if(k==='s'||k==='arrowdown') keys.s=false;
+  if(k==='d'||k==='arrowright')keys.d=false;
+});
+const keys={w:false,a:false,s:false,d:false};
+
+document.getElementById('canvas').addEventListener('click',e=>{
+  if(!socket)return;
+  const W=canvas.width,H=canvas.height;
+  const wx=localPos.x+(e.clientX-W/2)/ZOOM;
+  const wy=localPos.y+(e.clientY-H/2)/ZOOM;
+  let closest=null,minD=COLLECT_RANGE;
+  for(const r of worldResources){
+    if(!r.available)continue;
+    const d=Math.hypot(r.position.x-wx,r.position.y-wy);
+    if(d<minD){minD=d;closest=r;}
+  }
+  if(closest)socket.emit('player:collect',{resourceId:closest.id});
+});
+
+function attackNearestFauna(){
+  if(!socket)return;
+  let closest=null,minD=ATTACK_RANGE;
+  for(const f of worldFauna){
+    const d=Math.hypot(f.position.x-localPos.x,f.position.y-localPos.y);
+    if(d<minD){minD=d;closest=f;}
+  }
+  if(closest)socket.emit('player:attack_fauna',{faunaId:closest.id});
+  else addLog('Nenhuma fauna em alcance.','warn');
+}
+
+// ══════════════════════════════════════════════════════════════
+// GAME LOOP
+// ══════════════════════════════════════════════════════════════
+let lastTs=null;
+
+function applyInput(pos,input,mult){
+  const dt=Math.min(input.dt,100)/1000;
+  return{
+    x:Math.max(0,Math.min(MAP_W,pos.x+input.dx*PLAYER_SPEED*mult*dt)),
+    y:Math.max(0,Math.min(MAP_H,pos.y+input.dy*PLAYER_SPEED*mult*dt)),
+  };
+}
+
+function gameLoop(ts){
+  if(!socket)return;
+  const dt=lastTs?ts-lastTs:16;
+  lastTs=ts;
+
+  let dx=0,dy=0;
+  if(keys.w)dy-=1;if(keys.s)dy+=1;
+  if(keys.a)dx-=1;if(keys.d)dx+=1;
+  const len=Math.hypot(dx,dy)||1;
+
+  if(dx!==0||dy!==0){
+    dx/=len;dy/=len;
+    updateFacingFromInput(dx,dy);
+    const mult=currentSpeedMult;
+    const input={seq:++seqCounter,dx,dy,dt};
+    if(mult>0)localPos=applyInput(localPos,input,mult);
+    pendingInputs.push(input);
+    if(isExtracting)socket.emit('player:extract_cancel');
+    socket.emit('player:move',input);
+    revealChunksAround(localPos.x,localPos.y,2);
+  }
+
+  if(isExtracting){
+    const pct=Math.min(((Date.now()-extractStart)/extractDuration)*100,100);
+    document.getElementById('xpbar-fill-ext').style.width=pct+'%';
+  }
+
+  // Badge terreno
+  const badge=document.getElementById('terrain-badge');
+  if(currentSpeedMult===0){badge.style.display='block';badge.textContent='⚠ BLOQUEADO';}
+  else if(currentSpeedMult<0.7){badge.style.display='block';badge.textContent=`💧 Lento ×${currentSpeedMult.toFixed(2)}`;}
+  else badge.style.display='none';
+
+  // Atualiza bioma no minimap label
+  const b=getBiome(localPos.x,localPos.y);
+  document.getElementById('minimap-biome').textContent=BIOME_LABEL[b]??'';
+
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════
+const canvas=document.getElementById('canvas');
+const ctx   =canvas.getContext('2d');
+
+function w2s(wx,wy){
+  return{sx:(wx-localPos.x)*ZOOM+canvas.width/2,sy:(wy-localPos.y)*ZOOM+canvas.height/2};
+}
+
+function render(){
+  const W=canvas.width,H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // ── 1. Terreno ─────────────────────────────────────────────
+  if(terrainCanvas){
+    ctx.save();
+    ctx.translate(W/2,H/2);
+    ctx.scale(ZOOM,ZOOM);
+    ctx.translate(-localPos.x,-localPos.y);
+    ctx.drawImage(terrainCanvas,0,0);
+    if(fogCanvas)ctx.drawImage(fogCanvas,0,0);
+    ctx.restore();
+  } else {
+    ctx.fillStyle='#050810';ctx.fillRect(0,0,W,H);
+  }
+
+  // ── 2. Cone de visão ───────────────────────────────────────
+  if(visionCanvas){
+    renderVisionOverlay(W,H);
+    ctx.drawImage(visionCanvas,0,0);
+  }
+
+  // ── 3. Zonas de extração ───────────────────────────────────
+  for(const z of extractionZones){
+    const{sx,sy}=w2s(z.position.x,z.position.y);
+    const r=z.radius*ZOOM;
+    ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);
+    ctx.fillStyle='#c4a85c0a';ctx.strokeStyle='#c4a85c66';ctx.lineWidth=1.5;
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle='#c4a85ccc';ctx.font='bold 10px monospace';ctx.textAlign='center';
+    ctx.fillText('⬆ '+z.label,sx,sy-r-5);
+  }
+
+  // ── 4. Recursos ────────────────────────────────────────────
+  const RS=11*ZOOM;
+  for(const r of worldResources){
+    const{sx,sy}=w2s(r.position.x,r.position.y);
+    if(sx<-RS||sx>W+RS||sy<-RS||sy>H+RS)continue;
+    const vis=RV[r.type]??{bg:'#333',bd:'#888',l:'?'};
+    ctx.globalAlpha=r.available?1:0.3;
+    ctx.beginPath();ctx.arc(sx,sy,RS,0,Math.PI*2);
+    ctx.fillStyle=vis.bg;ctx.strokeStyle=vis.bd;ctx.lineWidth=1.5;
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font=`${Math.round(RS)}px sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(vis.l,sx,sy);
+    ctx.textBaseline='alphabetic';ctx.globalAlpha=1;
+  }
+
+  // ── 5. Fauna ────────────────────────────────────────────────
+  const FS=12*ZOOM;
+  for(const f of worldFauna){
+    const{sx,sy}=w2s(f.position.x,f.position.y);
+    if(sx<-FS-10||sx>W+FS+10||sy<-FS-10||sy>H+FS+10)continue;
+    if(f.stealth){
+      const d=Math.hypot(f.position.x-localPos.x,f.position.y-localPos.y);
+      if(d>(f.visibleRange??160))continue;
+    }
+    const vis=EV[f.type]??{bg:'#333',bd:'#888',l:'?'};
+    const aggro=f.isAggro;
+    if(aggro){
+      const pulse=0.5+0.5*Math.sin(Date.now()/160);
+      ctx.beginPath();ctx.arc(sx,sy,FS+4+pulse*3,0,Math.PI*2);
+      ctx.strokeStyle=vis.bd+'55';ctx.lineWidth=1.5;ctx.stroke();
+    }
+    ctx.beginPath();ctx.arc(sx,sy,FS,0,Math.PI*2);
+    ctx.fillStyle=vis.bg;ctx.strokeStyle=aggro?vis.bd:vis.bd+'99';
+    ctx.lineWidth=aggro?2:1.2;ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fff';
+    ctx.font=vis.l.length>1?`${Math.round(FS*0.65)}px monospace`:`${Math.round(FS)}px monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(vis.l,sx,sy);ctx.textBaseline='alphabetic';
+    const hpW=FS*2.4,hpPct=(f.hpPct??100)/100;
+    ctx.fillStyle='#111';ctx.fillRect(sx-hpW/2,sy-FS-7,hpW,4);
+    ctx.fillStyle=f.isHostile?'#ef4444':'#4ade80';
+    ctx.fillRect(sx-hpW/2,sy-FS-7,hpW*hpPct,4);
+    ctx.fillStyle='#c8d8e8aa';ctx.font=`${Math.round(FS*0.7)}px monospace`;
+    ctx.textAlign='center';ctx.fillText(f.label??f.type,sx,sy+FS+9);
+  }
+
+  // ── 6. Outros players ──────────────────────────────────────
+  const PS=13*ZOOM;
+  for(const p of worldPlayers){
+    if(p.socketId===mySocketId)continue;
+    const{sx,sy}=w2s(p.position.x,p.position.y);
+    ctx.beginPath();ctx.arc(sx,sy,PS,0,Math.PI*2);
+    ctx.fillStyle=p.isExtracting?'#0f3060':'#1a3a6a';
+    ctx.strokeStyle=p.isExtracting?'#c4a85c':'#60a5fa';
+    ctx.lineWidth=2;ctx.fill();ctx.stroke();
+    ctx.fillStyle='#93c5fd';ctx.font=`bold ${Math.round(PS)}px monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('P',sx,sy);ctx.textBaseline='alphabetic';
+    ctx.fillStyle='#93c5fdcc';ctx.font=`bold ${Math.round(PS*0.8)}px monospace`;
+    ctx.fillText(p.username,sx,sy-PS-4);
+    ctx.fillStyle='#111';ctx.fillRect(sx-14,sy+PS+2,28,3);
+    ctx.fillStyle='#60a5fa';ctx.fillRect(sx-14,sy+PS+2,28*(p.hp/100),3);
+  }
+
+  // ── 7. Player local ────────────────────────────────────────
+  const px=W/2,py=H/2,MY=14*ZOOM;
+  const ep=isExtracting?Math.sin(Date.now()/130)*3:0;
+  ctx.shadowColor=isExtracting?'#c4a85c':'#a78bfa';ctx.shadowBlur=isExtracting?16:8;
+  ctx.beginPath();ctx.arc(px,py,MY+ep,0,Math.PI*2);
+  ctx.fillStyle=isExtracting?'#3a1f00':'#1a1040';
+  ctx.strokeStyle=isExtracting?'#c4a85c':'#a78bfa';
+  ctx.lineWidth=2.5;ctx.fill();ctx.stroke();ctx.shadowBlur=0;
+  ctx.fillStyle='#d1d5db';ctx.font=`bold ${Math.round(MY)}px monospace`;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('P',px,py);ctx.textBaseline='alphabetic';
+
+  // Direção de visão (pequena seta)
+  ctx.save();
+  ctx.translate(px,py);ctx.rotate(facingAngle);
+  ctx.strokeStyle='#a78bfa88';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(MY+2,0);ctx.lineTo(MY+8,0);ctx.stroke();
+  ctx.restore();
+
+  // Coords + bioma
+  const biomeIdx=getBiome(localPos.x,localPos.y);
+  ctx.fillStyle='#4a6a8a';ctx.font='10px monospace';ctx.textAlign='left';
+  ctx.fillText(`(${Math.round(localPos.x)}, ${Math.round(localPos.y)})`,8,H-8);
+  ctx.textAlign='right';
+  ctx.fillText(BIOME_LABEL[biomeIdx]??'',W-8,H-8);
+
+  renderMinimap();
+}
+
+// ══════════════════════════════════════════════════════════════
+// MINIMAP
+// ══════════════════════════════════════════════════════════════
+function renderMinimap(){
+  const mc=document.getElementById('minimap');
+  const mctx=mc.getContext('2d');
+  const MW=mc.width,MH=mc.height;
+  const sx=MW/MAP_W,sy=MH/MAP_H;
+
+  if(miniTerrainCanvas)mctx.drawImage(miniTerrainCanvas,0,0);
+  else{mctx.fillStyle='#050810';mctx.fillRect(0,0,MW,MH);}
+
+  // Fog no minimap
+  if(discoveredChunks){
+    const cpx=MW/chunksW,cpy=MH/chunksH;
+    for(let cy2=0;cy2<chunksH;cy2++){
+      for(let cx2=0;cx2<chunksW;cx2++){
+        if(!discoveredChunks[cy2*chunksW+cx2]){
+          mctx.fillStyle='#000b';
+          mctx.fillRect(cx2*cpx,cy2*cpy,cpx+0.5,cpy+0.5);
+        }
+      }
+    }
+  }
+
+  for(const z of extractionZones){
+    mctx.beginPath();mctx.arc(z.position.x*sx,z.position.y*sy,z.radius*sx,0,Math.PI*2);
+    mctx.strokeStyle='#c4a85c88';mctx.lineWidth=1;mctx.stroke();
+  }
+  for(const r of worldResources){
+    if(!r.available)continue;
+    const vis=RV[r.type];
+    mctx.fillStyle=vis?.bd??'#888';
+    mctx.fillRect(r.position.x*sx-1,r.position.y*sy-1,2.2,2.2);
+  }
+  for(const f of worldFauna){
+    mctx.beginPath();mctx.arc(f.position.x*sx,f.position.y*sy,f.isHostile?1.8:1.2,0,Math.PI*2);
+    mctx.fillStyle=f.isHostile?'#ef444488':'#4ade8088';mctx.fill();
+  }
+  for(const p of worldPlayers){
+    if(p.socketId===mySocketId)continue;
+    mctx.beginPath();mctx.arc(p.position.x*sx,p.position.y*sy,2.5,0,Math.PI*2);
+    mctx.fillStyle='#60a5fa';mctx.fill();
+  }
+  mctx.beginPath();mctx.arc(localPos.x*sx,localPos.y*sy,3,0,Math.PI*2);
+  mctx.fillStyle='#a78bfa';mctx.fill();
+
+  // Viewport
+  const vw=(canvas.width/ZOOM)*sx,vh=(canvas.height/ZOOM)*sy;
+  const vx=(localPos.x-canvas.width/ZOOM/2)*sx;
+  const vy=(localPos.y-canvas.height/ZOOM/2)*sy;
+  mctx.strokeStyle='#ffffff22';mctx.lineWidth=0.5;
+  mctx.strokeRect(vx,vy,vw,vh);
+}
+
+// ══════════════════════════════════════════════════════════════
+// HUD — VITAIS (Etapa 8)
+// ══════════════════════════════════════════════════════════════
+function updateVitals(prevHp, prevTh){
+  const hpFill=document.getElementById('hp-fill');
+  const thFill=document.getElementById('thirst-fill');
+  hpFill.style.width    =Math.max(0,myHp)+'%';
+  thFill.style.width    =Math.max(0,myThirst)+'%';
+  document.getElementById('hp-val').textContent    =Math.round(myHp);
+  document.getElementById('thirst-val').textContent=Math.round(myThirst);
+
+  // Flash vermelho quando HP cai
+  if(prevHp!==undefined&&myHp<prevHp){
+    hpFill.classList.remove('damage-flash');
+    void hpFill.offsetWidth; // reflow para reiniciar animação
+    hpFill.classList.add('damage-flash');
+  }
+  // Flash azul quando sede cai
+  if(prevTh!==undefined&&myThirst<prevTh){
+    thFill.classList.remove('damage-flash');
+    void thFill.offsetWidth;
+    thFill.classList.add('damage-flash');
+  }
+
+  // Cor dinâmica: vermelho quando crítico
+  const hpPct=myHp/100;
+  const thPct=myThirst/100;
+  hpFill.style.background    =hpPct<0.3   ?'#ef4444':'linear-gradient(90deg,#991b1b,#ef4444)';
+  thFill.style.background    =thPct<0.25  ?'#1e40af':'linear-gradient(90deg,#1e40af,#60a5fa)';
+}
+
+// ══════════════════════════════════════════════════════════════
+// HUD — MOCHILA
+// ══════════════════════════════════════════════════════════════
+const ITEM_LABELS={
+  iron_ore:'Minério de Ferro',wood:'Madeira',stone:'Pedra',fiber:'Fibra',
+  coal:'Carvão',food_ration:'Ração',iron_ingot:'Lingote',wood_plank:'Tábua',
+  rope:'Corda',bandage:'Curativo',water_flask:'Cantil',arrow:'Flecha',
+  iron_sword:'Espada',bow:'Arco',dagger:'Adaga',axe:'Machado',
+  leather_vest:'Colete',iron_helmet:'Capacete',iron_chestplate:'Peitoral',
+  iron_pickaxe:'Picareta',iron_axe_tool:'Machado de Ferro',
+  chest:'Baú',storage_chest:'Baú Stash',
+};
+
+function updateInventory(){
+  const list=document.getElementById('inv-list');
+  if(!myInventory?.length){
+    list.innerHTML='<div id="inv-empty">Vazio</div>';
+  } else {
+    list.innerHTML=myInventory.map(i=>`
+      <div class="inv-item">
+        <span class="inv-item-name">${ITEM_LABELS[i.itemType]??i.itemType}</span>
+        <span class="inv-item-qty">${i.quantity}×</span>
+        <span class="inv-item-kg">${i.weight.toFixed(1)}kg</span>
+      </div>`).join('');
+  }
+  const pct=Math.min(100,(myWeightUsed/myWeightLimit)*100);
+  document.getElementById('inv-bar').style.width=pct+'%';
+  document.getElementById('inv-kg-text').textContent=`${myWeightUsed.toFixed(1)} / ${myWeightLimit} kg`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// HUD — SKILLS (Etapa 8)
+// ══════════════════════════════════════════════════════════════
+function renderSkillsPanel(){
+  const list=document.getElementById('skills-list');
+  if(!Object.keys(skillsData).length){
+    list.innerHTML='<div style="color:var(--text-dim);font-size:0.74rem;text-align:center;padding:12px">Conecte-se para ver habilidades</div>';
+    return;
+  }
+  list.innerHTML=Object.entries(skillsData).map(([name,s])=>{
+    const pct=Math.min(100,Math.round((s.xp/(s.xpToNext||1))*100));
+    const icon=SKILL_ICONS[name]??'●';
+    const label=SKILL_NAMES[name]??name;
+    return `
+    <div class="skill-row">
+      <div class="skill-header">
+        <span class="skill-name">${icon} ${label}</span>
+        <span class="skill-level">Lv ${s.level}</span>
+      </div>
+      <div class="xpbar-bg"><div class="xpbar-fill" style="width:${pct}%"></div></div>
+      <div class="skill-xp">${s.xp} / ${s.xpToNext} XP (${pct}%)</div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// STASH PERMANENTE
+// ══════════════════════════════════════════════════════════════
+async function openStash(force=false){
+  if(!token)return;
+  // Carrega do servidor se ainda não tiver dados ou for forçado
+  if(!stashData.items.length||force){
+    document.getElementById('stash-list').innerHTML='<div class="stash-empty">⏳ Carregando…</div>';
+    try{
+      const [stashRes,balanceRes]=await Promise.all([
+        fetch(SERVER+'/stash',{headers:{Authorization:`Bearer ${token}`}}),
+        fetch(SERVER+'/trader/balance',{headers:{Authorization:`Bearer ${token}`}}),
+      ]);
+      const sd=await stashRes.json();
+      const bd=await balanceRes.json();
+      stashData={
+        items:       sd.items??[],
+        totalWeight: sd.totalWeight??0,
+        weightLimit: sd.weightLimit??500,
+        currency:    bd.currency??0,
+      };
+    }catch(e){
+      document.getElementById('stash-list').innerHTML='<div class="stash-empty">❌ Falha ao carregar</div>';
+      return;
+    }
+  }
+  renderStashPanel();
+}
+
+function renderStashPanel(){
+  const { items, totalWeight, weightLimit, currency } = stashData;
+  const pct = Math.min(100,(totalWeight/weightLimit)*100);
+
+  document.getElementById('stash-kg-text').textContent =
+    `${totalWeight.toFixed(1)} / ${weightLimit} kg`;
+  document.getElementById('stash-currency').textContent=
+    `💰 ${currency.toFixed(2)}`;
+  document.getElementById('stash-bar').style.width=pct+'%';
+
+  const list=document.getElementById('stash-list');
+  if(!items||!items.length){
+    list.innerHTML='<div class="stash-empty">Stash vazio — extraia recursos para armazená-los</div>';
+    return;
+  }
+
+  // Agrupa por categoria
+  const groups={};
+  items.forEach(item=>{
+    const label=ITEM_LABELS[item.itemType]??item.itemType;
+    const cat=itemCategory(item.itemType);
+    if(!groups[cat])groups[cat]=[];
+    groups[cat].push({...item,label});
+  });
+
+  const CAT_LABEL={
+    resource:   '🪨 Recursos Brutos',
+    craftable:  '⚒️ Intermediários',
+    weapon:     '⚔️ Armas',
+    armor:      '🛡️ Armaduras',
+    consumable: '🧬 Consumíveis',
+    food:       '🌾 Comida',
+  };
+
+  let html='';
+  for(const [cat,catItems] of Object.entries(groups)){
+    html+=`<div class="stash-section-title">${CAT_LABEL[cat]??cat}</div>`;
+    catItems.forEach(i=>{
+      html+=`
+        <div class="stash-item">
+          <span class="stash-item-name">${i.label}</span>
+          <span class="stash-item-qty">${i.quantity}×</span>
+          <span class="stash-item-kg">${i.weight.toFixed(1)}kg</span>
+        </div>`;
+    });
+  }
+  list.innerHTML=html;
+}
+
+// Retorna categoria de um itemType
+function itemCategory(type){
+  if(['iron_ore','wood','stone','fiber','coal'].includes(type))return 'resource';
+  if(['iron_ingot','wood_plank','rope','arrow','iron_pickaxe','iron_axe_tool','chest','storage_chest'].includes(type))return 'craftable';
+  if(['iron_sword','bow','dagger','axe'].includes(type))return 'weapon';
+  if(['leather_vest','iron_helmet','iron_chestplate'].includes(type))return 'armor';
+  if(['bandage','water_flask'].includes(type))return 'consumable';
+  if(['food_ration'].includes(type))return 'food';
+  return 'craftable';
+}
+
+// Atualiza stash local após extracão bem-sucedida
+function syncStashFromExtract(extracted){
+  if(!extracted||!extracted.length)return;
+  // Mescla itens extraídos no stashData local
+  extracted.forEach(newItem=>{
+    const ex=stashData.items.find(i=>i.itemType===newItem.itemType);
+    if(ex){ ex.quantity+=newItem.quantity; ex.weight+=newItem.weight; }
+    else stashData.items.push({...newItem});
+  });
+  // Atualiza peso
+  stashData.totalWeight=stashData.items.reduce((s,i)=>s+i.weight,0);
+  // Atualiza painel se estiver aberto
+  if(activePanel==='stash')renderStashPanel();
+}
+
+// ══════════════════════════════════════════════════════════════
+// CRAFTING
+// ══════════════════════════════════════════════════════════════
+async function openCrafting(){
+  if(!token)return;
+  document.getElementById('crafting-list').innerHTML=
+    '<div style="color:var(--text-dim);font-size:0.74rem;text-align:center;padding:12px">⏳ Carregando receitas…</div>';
+
+  // Carrega stash (necessário para verificar ingredientes) e receitas em paralelo
+  const [stashOk] = await Promise.all([
+    openStash(),
+    fetchRecipes(),
+  ]);
+  renderCraftingPanel();
+}
+
+async function fetchRecipes(){
+  if(!token)return;
+  try{
+    const res=await fetch(SERVER+'/crafting/recipes',{headers:{Authorization:`Bearer ${token}`}});
+    const data=await res.json();
+    recipesData=data.recipes??[];
+  }catch(e){
+    recipesData=[];
+  }
+}
+
+// Mapa de xpAction → categoria de exibição
+const RECIPE_CAT={
+  craft_item:  'craftable',
+  craft_weapon:'weapon',
+  craft_armor: 'armor',
+};
+// Consumíveis especiais
+const CONSUMABLE_OUTPUTS=['bandage','water_flask','arrow','rope'];
+
+function renderCraftingPanel(){
+  const list=document.getElementById('crafting-list');
+  if(!recipesData.length){
+    list.innerHTML='<div style="color:var(--text-dim);font-size:0.74rem;text-align:center;padding:12px">Nenhuma receita disponível.<br>Aumente suas habilidades!</div>';
+    return;
+  }
+
+  // Filtra por categoria
+  let filtered=recipesData.filter(r=>{
+    if(craftFilterCat==='all')return true;
+    if(craftFilterCat==='consumable')return CONSUMABLE_OUTPUTS.includes(r.output);
+    if(craftFilterCat==='craftable') return RECIPE_CAT[r.xpAction]==='craftable'&&!CONSUMABLE_OUTPUTS.includes(r.output);
+    return RECIPE_CAT[r.xpAction]===craftFilterCat;
+  });
+
+  if(!filtered.length){
+    list.innerHTML='<div style="color:var(--text-dim);font-size:0.74rem;text-align:center;padding:12px">Nenhuma receita nesta categoria.</div>';
+    return;
+  }
+
+  list.innerHTML=filtered.map(r=>buildRecipeCard(r)).join('');
+
+  // Bind dos botões de craft
+  list.querySelectorAll('.btn-craft[data-recipe]').forEach(btn=>{
+    btn.addEventListener('click',()=>doCraft(btn.dataset.recipe));
+  });
+}
+
+function buildRecipeCard(recipe){
+  const outputLabel=ITEM_LABELS[recipe.output]??recipe.output;
+  const time=recipe.craftTimeSec??0;
+
+  // Verifica ingredientes contra o stash
+  let canCraft=true;
+  const inputsHtml=recipe.inputs.map(ing=>{
+    const label=ITEM_LABELS[ing.itemType]??ing.itemType;
+    const inStash=stashData.items.find(i=>i.itemType===ing.itemType);
+    const have=(inStash?.quantity??0);
+    const ok=have>=ing.quantity;
+    if(!ok)canCraft=false;
+    return `<span class="recipe-ing ${ok?'ok':'miss'}">${label} ${have}/${ing.quantity}</span>`;
+  }).join('');
+
+  const skillText=`${SKILL_NAMES[recipe.skillReq?.skill]??recipe.skillReq?.skill} Lv${recipe.skillReq?.level}`;
+
+  return `
+  <div class="recipe-card">
+    <div class="recipe-header">
+      <span class="recipe-name">${outputLabel}</span>
+      <span class="recipe-skill">${skillText}</span>
+    </div>
+    <div class="recipe-desc">${recipe.description??''}</div>
+    <div class="recipe-inputs">${inputsHtml}</div>
+    <div class="recipe-footer">
+      <span class="recipe-output">➡ ${recipe.outputQty}× ${outputLabel} &nbsp;⏱ ${time}s</span>
+      <button class="btn-craft" data-recipe="${recipe.id}" ${canCraft?'':'disabled'}>
+        ${canCraft?'Craftar':'Faltam itens'}
+      </button>
+    </div>
+  </div>`;
+}
+
+async function doCraft(recipeId){
+  if(!token)return;
+  const fb=document.getElementById('craft-feedback');
+  fb.className=''; fb.style.display='none';
+
+  try{
+    const res=await fetch(SERVER+'/crafting/craft',{
+      method:'POST',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({recipeId}),
+    });
+    const data=await res.json();
+
+    if(res.ok){
+      // Atualiza stash local com o resultado
+      stashData.items=data.stash??stashData.items;
+      stashData.totalWeight=(data.stash??[]).reduce((s,i)=>s+i.weight,0);
+      // Atualiza skills se vieram
+      if(data.xpResults?.length){
+        showXp(data.xpResults);
+        if(data.xpResults.some(r=>r.leveledUp)){
+          addLog('🎉 Level up! Recarregue o painel de Skills.','ok');
+        }
+        // Busca skills atualizadas
+        fetch(SERVER+'/crafting/skills',{headers:{Authorization:`Bearer ${token}`}})
+          .then(r=>r.json()).then(d=>{if(d.skills)skillsData=d.skills;});
+      }
+      fb.textContent=data.message??'Craft realizado!';
+      fb.className='ok'; fb.style.display='block';
+      addLog(data.message??'Craft realizado!','ok');
+      // Re-renderiza com estoque atualizado
+      renderCraftingPanel();
+    } else {
+      fb.textContent=data.error??'Falha no craft';
+      fb.className='err'; fb.style.display='block';
+      addLog(data.error??'Falha no craft','warn');
+    }
+  }catch(e){
+    fb.textContent='Erro de conexão';
+    fb.className='err'; fb.style.display='block';
+  }
+
+  // Auto-esconde o feedback após 3s
+  setTimeout(()=>{fb.style.display='none';},3000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOG
+// ══════════════════════════════════════════════════════════════
+let logBuffer=[];
+function addLog(msg,type=''){
+  const el=document.getElementById('log-entries');
+  const div=document.createElement('div');
+  div.className='log-line '+type;
+  const t=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  div.textContent=`[${t}] ${msg}`;
+  el.prepend(div);
+  logBuffer.push(div);
+  if(logBuffer.length>16)logBuffer.shift().remove();
+}
+
+function showXp(results){
+  if(!results?.length)return;
+  for(const r of results){
+    if(!r)continue;
+    const el=document.createElement('div');
+    el.className='xp-popup';
+    el.textContent=`+${r.xpGranted??r.xp??'?'} XP (${r.skill??''})`;
+    el.style.left=(canvas.width/2+(Math.random()-0.5)*100)+'px';
+    el.style.top =(canvas.height/2-55)+'px';
+    document.getElementById('game-screen').appendChild(el);
+    setTimeout(()=>el.remove(),1400);
+    addLog(`+${r.xpGranted??r.xp} XP em ${r.skill}`,'xp');
+    // Atualiza painel de skills se estiver aberto
+    if(activePanel==='skills')renderSkillsPanel();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HOTBAR (Etapa 11)
+// ══════════════════════════════════════════════════════════════
+
+function updateHotbarUI() {
+  hotbar.forEach((slot, idx) => {
+    const el = document.querySelector(`.hotbar-slot[data-slot="${idx}"]`);
+    if (!el) return;
+
+    if (slot.itemType) {
+      el.classList.remove('empty');
+      const meta = ITEM_META[slot.itemType];
+      const icon = getItemIcon(slot.itemType);
+      const label = meta?.label ?? slot.itemType;
+
+      el.querySelector('.hotbar-icon').textContent = icon;
+      el.querySelector('.hotbar-label').textContent = label;
+
+      // Mostra quantidade
+      let qtyEl = el.querySelector('.hotbar-qty');
+      if (!qtyEl) {
+        qtyEl = document.createElement('span');
+        qtyEl.className = 'hotbar-qty';
+        el.appendChild(qtyEl);
+      }
+      qtyEl.textContent = slot.quantity > 1 ? slot.quantity + '×' : '';
+    } else {
+      el.classList.add('empty');
+      const defaultIcons = { weapon: '⚔️', tool: '⛏', food: '🌾', consumable: '🧬' };
+      const defaultLabels = { weapon: 'Arma', tool: 'Ferramenta', food: 'Alimento', consumable: 'Utilitário' };
+      el.querySelector('.hotbar-icon').textContent = defaultIcons[slot.type];
+      el.querySelector('.hotbar-label').textContent = defaultLabels[slot.type];
+      const qtyEl = el.querySelector('.hotbar-qty');
+      if (qtyEl) qtyEl.remove();
+    }
+  });
+}
+
+function getItemIcon(itemType) {
+  const icons = {
+    bandage: '🩹', water_flask: '💧', food_ration: '🌾',
+    iron_sword: '⚔️', bow: '🏹', dagger: '🗡', axe: '🪓',
+    iron_pickaxe: '⛏', iron_axe_tool: '🪓',
+  };
+  return icons[itemType] ?? '📦';
+}
+
+function equipToHotbar(itemType, slotIdx) {
+  if (slotIdx < 0 || slotIdx >= hotbar.length) return;
+
+  // Verifica se tem o item no inventário ou stash
+  const inInv = myInventory.find(i => i.itemType === itemType);
+  const inStash = stashData.items.find(i => i.itemType === itemType);
+
+  if (!inInv && !inStash) {
+    addLog('Você não possui este item', 'warn');
+    return;
+  }
+
+  hotbar[slotIdx].itemType = itemType;
+  hotbar[slotIdx].quantity = (inInv?.quantity ?? 0) + (inStash?.quantity ?? 0);
+  updateHotbarUI();
+  addLog(`${ITEM_META[itemType]?.label} equipado no slot ${slotIdx + 1}`, 'ok');
+}
+
+function useHotbarSlot(slotIdx) {
+  const slot = hotbar[slotIdx];
+  if (!slot || !slot.itemType) {
+    addLog('Slot vazio', 'warn');
+    return;
+  }
+
+  // Verifica cooldown
+  const now = Date.now();
+  if (hotbarCooldowns[slotIdx] > now) {
+    const remaining = Math.ceil((hotbarCooldowns[slotIdx] - now) / 1000);
+    addLog(`Aguarde ${remaining}s`, 'warn');
+    return;
+  }
+
+  // Usa o item via socket
+  socket?.emit('player:use_consumable', { itemType: slot.itemType });
+
+  // Aplica cooldown visual
+  hotbarCooldowns[slotIdx] = now + HOTBAR_COOLDOWN_MS;
+  const slotEl = document.querySelector(`.hotbar-slot[data-slot="${slotIdx}"]`);
+  if (slotEl) {
+    slotEl.classList.add('cooldown');
+    const cdEl = slotEl.querySelector('.hotbar-cooldown');
+    let remaining = 2;
+    cdEl.textContent = remaining;
+    const interval = setInterval(() => {
+      remaining--;
+      cdEl.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        slotEl.classList.remove('cooldown');
+      }
+    }, 1000);
+  }
+}
+
+// Event listeners das teclas 1-4
+window.addEventListener('keydown', e => {
+  if (e.key >= '1' && e.key <= '4') {
+    const slotIdx = parseInt(e.key) - 1;
+    useHotbarSlot(slotIdx);
+  }
+});
+
+// Handler do servidor para consumíveis
+socket?.on('consumable:ok', data => {
+  addLog(`Usou ${ITEM_META[data.itemType]?.label}`, 'ok');
+  if (data.healedHp > 0) addLog(`+${data.healedHp} HP`, 'ok');
+  if (data.restoredThirst > 0) addLog(`+${data.restoredThirst} Sede`, 'ok');
+
+  myHp = data.hp;
+  myThirst = data.thirst;
+  updateVitals(myHp, myThirst);
+
+  if (data.inventory) {
+    myInventory = data.inventory;
+    myWeightUsed = data.weightUsed;
+    updateInventory();
+  }
+  if (data.stash) {
+    stashData.items = data.stash;
+    stashData.totalWeight = data.stash.reduce((s, i) => s + i.weight, 0);
+    if (activePanel === 'stash') renderStashPanel();
+  }
+
+  // Atualiza quantidade no hotbar
+  hotbar.forEach(slot => {
+    if (slot.itemType === data.itemType) {
+      const inInv = myInventory.find(i => i.itemType === data.itemType);
+      const inStash = stashData.items.find(i => i.itemType === data.itemType);
+      slot.quantity = (inInv?.quantity ?? 0) + (inStash?.quantity ?? 0);
+      if (slot.quantity === 0) {
+        slot.itemType = null;
+        slot.quantity = 0;
+      }
+    }
+  });
+  updateHotbarUI();
+});
+
+socket?.on('consumable:fail', data => {
+  addLog(data.reason ?? 'Falha ao usar item', 'warn');
+});
+
+function resizeCanvas(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
+window.addEventListener('resize',resizeCanvas);
+</script>
+</body>
+</html>

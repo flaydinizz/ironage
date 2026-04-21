@@ -1,0 +1,13 @@
+rodar servidor
+cd C:\Users\flayb\OneDrive\Documents\ironage\ironageSide\public\js\apps\server
+npm run dev
+
+
+power shell
+cd C:\Users\flayb\OneDrive\Documents\ironage\ironageSide\public\js\apps\client
+npx serve .
+
+
+
+
+cd C:\Users\flayb\OneDrive\Documents\ironage\ironageSide\public\js\apps\client
